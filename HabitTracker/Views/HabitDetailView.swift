@@ -9,8 +9,9 @@ struct HabitDetailView: View {
 
     var body: some View {
         if let habit = store.habits.first(where: { $0.id == habitId }) {
+            let today = Date()
             let background = colorScheme == .dark ? AppColors.backgroundDark : AppColors.backgroundAlt
-            let weekCompletions = store.getWeekCompletions(habitId: habit.id, weekStart: Date())
+            let weekCompletions = store.getWeekCompletions(habitId: habit.id, weekStart: today)
             let completionRate = habit.goalPerWeek > 0
                 ? min(Double(weekCompletions) / Double(habit.goalPerWeek), 1.0)
                 : 0
@@ -27,7 +28,7 @@ struct HabitDetailView: View {
                         goalPerWeek: habit.goalPerWeek
                     )
 
-                    historySection(habit: habit)
+                    historySection(habit: habit, today: today)
                 }
                 .padding(16)
             }
@@ -115,8 +116,8 @@ struct HabitDetailView: View {
         }
     }
 
-    private func historySection(habit: Habit) -> some View {
-        let days = (0..<14).map { DateUtils.addDays(Date(), -$0) }.reversed()
+    private func historySection(habit: Habit, today: Date) -> some View {
+        let days = (0..<14).map { DateUtils.addDays(today, -$0) }.reversed()
         let cardColor = colorScheme == .dark ? AppColors.surfaceDark : AppColors.surface
 
         return VStack(alignment: .leading, spacing: 12) {

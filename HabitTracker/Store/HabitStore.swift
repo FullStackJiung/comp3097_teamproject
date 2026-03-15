@@ -6,7 +6,10 @@ final class HabitStore: ObservableObject {
         didSet { save() }
     }
     @Published var records: [HabitRecord] {
-        didSet { save() }
+        didSet {
+            rebuildCache()
+            save()
+        }
     }
     @Published var isDarkMode: Bool {
         didSet { save() }
@@ -17,10 +20,13 @@ final class HabitStore: ObservableObject {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
+    // O(1) lookup: "habitId|dayTimestamp" -> isCompleted
+    private var completionCache: [String: Bool] = [:]
+
     init() {
         encoder = JSONEncoder()
-        decoder = JSONDecoder()
         encoder.dateEncodingStrategy = .iso8601
+        decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
         if let data = defaults.data(forKey: storageKey),
@@ -34,14 +40,32 @@ final class HabitStore: ObservableObject {
             records = SeedData.defaultRecords(for: seedHabits)
             isDarkMode = false
         }
+
+        rebuildCache()
     }
 
     var activeHabits: [Habit] {
         habits.filter { !$0.isArchived }
     }
 
+    // MARK: - Cache
+
+    private func cacheKey(habitId: UUID, date: Date) -> String {
+        "\(habitId.uuidString)|\(Int(DateUtils.startOfDay(date).timeIntervalSince1970))"
+    }
+
+    private func rebuildCache() {
+        completionCache = Dictionary(
+            records.map { ($0.habitId, $0.date, $0.isCompleted) }
+                   .map { (cacheKey(habitId: $0.0, date: $0.1), $0.2) },
+            uniquingKeysWith: { _, new in new }
+        )
+    }
+
+    // MARK: - Habit Management
+
     func addHabit(_ draft: HabitDraft) {
-        let newHabit = Habit(
+        habits.append(Habit(
             id: UUID(),
             title: draft.title,
             symbolName: draft.symbolName,
@@ -49,8 +73,7 @@ final class HabitStore: ObservableObject {
             goalPerWeek: draft.goalPerWeek,
             createdDate: Date(),
             isArchived: false
-        )
-        habits.append(newHabit)
+        ))
     }
 
     func updateHabit(id: UUID, draft: HabitDraft) {
@@ -76,52 +99,45 @@ final class HabitStore: ObservableObject {
         habits[index].isArchived = false
     }
 
+    // MARK: - Tracking
+
     func toggleCompletion(habitId: UUID, date: Date) {
         if let index = records.firstIndex(where: {
             $0.habitId == habitId && DateUtils.isSameDay($0.date, date)
         }) {
             records[index].isCompleted.toggle()
         } else {
-            records.append(
-                HabitRecord(
-                    id: UUID(),
-                    habitId: habitId,
-                    date: DateUtils.startOfDay(date),
-                    isCompleted: true
-                )
-            )
+            records.append(HabitRecord(
+                id: UUID(),
+                habitId: habitId,
+                date: DateUtils.startOfDay(date),
+                isCompleted: true
+            ))
         }
     }
 
     func isCompletedOnDate(habitId: UUID, date: Date) -> Bool {
-        records.first(where: {
-            $0.habitId == habitId && $0.isCompleted && DateUtils.isSameDay($0.date, date)
-        }) != nil
+        completionCache[cacheKey(habitId: habitId, date: date)] == true
     }
 
     func getWeekCompletions(habitId: UUID, weekStart: Date) -> Int {
         let start = DateUtils.startOfWeek(weekStart)
-        let end = DateUtils.addDays(start, 7)
-
-        return records.filter { record in
-            record.habitId == habitId &&
-            record.isCompleted &&
-            record.date >= start &&
-            record.date < end
+        return (0..<7).filter {
+            isCompletedOnDate(habitId: habitId, date: DateUtils.addDays(start, $0))
         }.count
     }
 
     func getStreak(habitId: UUID) -> Int {
         var streak = 0
         var current = DateUtils.startOfDay(Date())
-
         while isCompletedOnDate(habitId: habitId, date: current) {
             streak += 1
             current = DateUtils.addDays(current, -1)
         }
-
         return streak
     }
+
+    // MARK: - Settings
 
     func toggleDarkMode() {
         isDarkMode.toggle()
@@ -134,11 +150,13 @@ final class HabitStore: ObservableObject {
         isDarkMode = false
     }
 
+    // MARK: - Persistence
+
     private func save() {
-        let state = PersistedState(habits: habits, records: records, isDarkMode: isDarkMode)
-        if let data = try? encoder.encode(state) {
-            defaults.set(data, forKey: storageKey)
-        }
+        guard let data = try? encoder.encode(
+            PersistedState(habits: habits, records: records, isDarkMode: isDarkMode)
+        ) else { return }
+        defaults.set(data, forKey: storageKey)
     }
 }
 

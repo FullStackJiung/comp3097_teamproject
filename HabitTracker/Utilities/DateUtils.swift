@@ -3,6 +3,19 @@ import Foundation
 enum DateUtils {
     static let calendar = Calendar.current
 
+    // Cached formatters — DateFormatter is expensive to initialize
+    private static let fullDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE, MMM d"
+        return f
+    }()
+
+    private static let shortDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE, MMM d"
+        return f
+    }()
+
     static func startOfDay(_ date: Date) -> Date {
         calendar.startOfDay(for: date)
     }
@@ -21,14 +34,10 @@ enum DateUtils {
     }
 
     static func formattedDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMM d"
-        return formatter.string(from: date)
+        fullDateFormatter.string(from: date)
     }
 
     static func shortLabel(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE, MMM d"
-        return formatter.string(from: date)
+        shortDateFormatter.string(from: date)
     }
 }
