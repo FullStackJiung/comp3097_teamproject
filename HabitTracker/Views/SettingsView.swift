@@ -4,7 +4,8 @@ struct SettingsView: View {
     @EnvironmentObject private var store: HabitStore
     @Environment(\.colorScheme) private var colorScheme
     @State private var showResetAlert = false
-    @State private var showExportAlert = false
+    @State private var showShareSheet = false
+    @State private var exportText = ""
 
     var body: some View {
         let background = colorScheme == .dark ? AppColors.backgroundDark : AppColors.backgroundAlt
@@ -23,7 +24,8 @@ struct SettingsView: View {
 
                     Section("Data") {
                         Button("Export Summary") {
-                            showExportAlert = true
+                            exportText = generateExportText()
+                            showShareSheet = true
                         }
                         .foregroundColor(AppColors.accent)
 
@@ -60,12 +62,55 @@ struct SettingsView: View {
         } message: {
             Text("This will delete all habits and records.")
         }
-        .alert("Export not available", isPresented: $showExportAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Export will be added in a future update.")
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(text: exportText)
         }
         .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private func generateExportText() -> String {
+        let today = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateString = formatter.string(from: today)
+
+        var lines: [String] = []
+        lines.append("=== Habit Tracker Summary ===")
+        lines.append("Exported: \(dateString)")
+        lines.append("")
+
+        let activeHabits = store.activeHabits
+        let archivedHabits = store.habits.filter { $0.isArchived }
+
+        lines.append("Active Habits: \(activeHabits.count)")
+        lines.append("Archived Habits: \(archivedHabits.count)")
+        lines.append("")
+
+        if !activeHabits.isEmpty {
+            lines.append("--- Active Habits ---")
+            for habit in activeHabits {
+                let weekCompletions = store.getWeekCompletions(habitId: habit.id, weekStart: today)
+                let streak = store.getStreak(habitId: habit.id)
+                let rate = habit.goalPerWeek > 0
+                    ? Int(min(Double(weekCompletions) / Double(habit.goalPerWeek), 1.0) * 100)
+                    : 0
+                lines.append("• \(habit.title)")
+                lines.append("  Goal: \(habit.goalPerWeek)x/week")
+                lines.append("  This week: \(weekCompletions)/\(habit.goalPerWeek) (\(rate)%)")
+                lines.append("  Streak: \(streak) day(s)")
+                lines.append("")
+            }
+        }
+
+        if !archivedHabits.isEmpty {
+            lines.append("--- Archived Habits ---")
+            for habit in archivedHabits {
+                lines.append("• \(habit.title) (archived)")
+            }
+            lines.append("")
+        }
+
+        return lines.joined(separator: "\n")
     }
 
     private var headerView: some View {
@@ -79,6 +124,16 @@ struct SettingsView: View {
         .padding(.vertical, 16)
         .background(colorScheme == .dark ? AppColors.surfaceDark : AppColors.surface)
     }
+}
+
+private struct ShareSheet: UIViewControllerRepresentable {
+    let text: String
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [text], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {
