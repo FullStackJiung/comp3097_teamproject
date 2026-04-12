@@ -144,9 +144,8 @@ final class HabitStore: ObservableObject {
     }
 
     func resetAllData() {
-        let seedHabits = SeedData.defaultHabits
-        habits = seedHabits
-        records = SeedData.defaultRecords(for: seedHabits)
+        habits = []
+        records = []
         isDarkMode = false
     }
 
